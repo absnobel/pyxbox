@@ -3,7 +3,9 @@
 #----------------------------------------------------------------------------#
 
 from flask import Flask, render_template, request
+from flask_socketio import SocketIO, emit
 # from flask.ext.sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
 import logging
 from logging import Formatter, FileHandler
 from forms import *
@@ -16,6 +18,22 @@ import os
 app = Flask(__name__)
 app.config.from_object('config')
 #db = SQLAlchemy(app)
+socketio = SocketIO(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+# Interesting bit here we need to store a unique id for each session... 
+# so the plan here is
+# 1. provide anonymous user to index with login button
+# a. login will redirect to xbox ms login screen.. callback to auth/callback route with token
+# b. Store token in mem or db with session id
+# 2. protect the logged in route '/xbox'
+# 3. create a websockets event that listens for 'getMe' 
+# socketio getme event
+# assuming i understand the logic current_user will be populated with the code
+# 5. current_user will be autopopulated with session id and if overridden could add the xbox token
+# 6. use the api and token to retrieve gamertag and gamerpic url emitting the message back to client 
+# 7. Client will then display the received info. WIN!
 
 # Automatically tear down SQLAlchemy.
 '''
@@ -39,6 +57,9 @@ def login_required(test):
 #----------------------------------------------------------------------------#
 # Controllers.
 #----------------------------------------------------------------------------#
+@login_manager.user_loader
+def load_user(user_id):
+    return User.get(user_id)
 
 
 @app.route('/')
