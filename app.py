@@ -3,14 +3,24 @@
 #----------------------------------------------------------------------------#
 
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
+#from flask_socketio import SocketIO, emit
 # from flask.ext.sqlalchemy import SQLAlchemy
-from flask_login import LoginManager
+#from flask_login import LoginManager
 import logging
 from logging import Formatter, FileHandler
 from forms import *
 import os
-
+import webbrowser
+import asyncio
+from aiohttp import ClientSession, ClientResponseError
+from xbox.webapi.api.client import XboxLiveClient
+from xbox.webapi.authentication.manager import AuthenticationManager
+from xbox.webapi.authentication.models import OAuth2TokenResponse
+from xbox.webapi.common.exceptions import AuthenticationException
+from xbox import *
+client_id = ''
+client_secret = ''
+queue = asyncio.Queue(1)
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -18,9 +28,9 @@ import os
 app = Flask(__name__)
 app.config.from_object('config')
 #db = SQLAlchemy(app)
-socketio = SocketIO(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
+#socketio = SocketIO(app)
+#login_manager = LoginManager()
+#login_manager.init_app(app)
 
 # Interesting bit here we need to store a unique id for each session... 
 # so the plan here is
@@ -57,10 +67,23 @@ def login_required(test):
 #----------------------------------------------------------------------------#
 # Controllers.
 #----------------------------------------------------------------------------#
-@login_manager.user_loader
+#@login_manager.user_loader
 def load_user(user_id):
     return User.get(user_id)
 
+@app.route('/auth/callback')
+async def auth_callback(request):
+    error = request.query.get("error")
+    if error:
+        description = request.query.get("error_description")
+        print(f"Error in auth_callback: {description}")
+        return
+    # Run in task to not make unsuccessful parsing the HTTP response fail
+    asyncio.create_task(queue.put(request.query["code"]))
+    return web.Response(
+        headers={"content-type": "text/html"},
+        text="<script>window.close()</script>",
+    )
 
 @app.route('/')
 def home():
@@ -73,9 +96,28 @@ def about():
 
 
 @app.route('/login')
-def login():
-    form = LoginForm(request.form)
-    return render_template('forms/login.html', form=form)
+async def login():
+    async with ClientSession() as session:
+        auth_mgr = AuthenticationManager(
+              session, client_id, client_secret, "http://localhost/auth/callback"
+        )
+
+       
+        try:
+            auth_url = auth_mgr.generate_authorization_url()
+            webbrowser.open(auth_url)
+            code = await queue.get()
+            await auth_mgr.request_tokens(code)
+        except ClientResponseError:
+              print("Could not refresh tokens")
+              sys.exit(-1)
+
+        # with open(tokens_file, mode="w") as f:
+        #       f.write(auth_mgr.oauth.json())
+        print(f'Refreshed tokens in {auth_mgr.oauth.json()}!')
+
+        xbl_client = XboxLiveClient(auth_mgr)
+    return render_template('pages/loggedin.html')
 
 
 @app.route('/register')

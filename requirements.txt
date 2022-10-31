@@ -5,6 +5,8 @@ WTForms
 coverage
 flask-login
 flask-socketio
+xbox-webapi
+aioflask
 # ecdsa
 # paramiko
 # pycrypto
