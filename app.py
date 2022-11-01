@@ -2,7 +2,7 @@
 # Imports
 #----------------------------------------------------------------------------#
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect
 #from flask_socketio import SocketIO, emit
 # from flask.ext.sqlalchemy import SQLAlchemy
 #from flask_login import LoginManager
@@ -20,7 +20,7 @@ from xbox.webapi.common.exceptions import AuthenticationException
 from xbox import *
 client_id = ''
 client_secret = ''
-queue = asyncio.Queue(1)
+
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -31,6 +31,7 @@ app.config.from_object('config')
 #socketio = SocketIO(app)
 #login_manager = LoginManager()
 #login_manager.init_app(app)
+auth_mgr = None
 
 # Interesting bit here we need to store a unique id for each session... 
 # so the plan here is
@@ -72,18 +73,32 @@ def load_user(user_id):
     return User.get(user_id)
 
 @app.route('/auth/callback')
-async def auth_callback(request):
-    error = request.query.get("error")
+async def auth_callback():
+    session = ClientSession()
+    
+    auth_mgr = AuthenticationManager(
+        session, client_id, client_secret, "http://localhost:5000/auth/callback"
+    )
+    error = request.args.get("error")
     if error:
-        description = request.query.get("error_description")
+        description = request.args.get("error_description")
         print(f"Error in auth_callback: {description}")
         return
     # Run in task to not make unsuccessful parsing the HTTP response fail
-    asyncio.create_task(queue.put(request.query["code"]))
-    return web.Response(
-        headers={"content-type": "text/html"},
-        text="<script>window.close()</script>",
-    )
+
+    code = request.args.get("code")
+    try:
+        await auth_mgr.request_tokens(code)
+    except ClientResponseError:
+              print("Could not refresh tokens")
+              
+
+        # with open(tokens_file, mode="w") as f:
+        #       f.write(auth_mgr.oauth.json())
+    print(f'Refreshed tokens in {auth_mgr.oauth.json()}!')
+
+    xbl_client = XboxLiveClient(auth_mgr)
+    return render_template('pages/placeholder.loggedin.html')
 
 @app.route('/')
 def home():
@@ -97,27 +112,16 @@ def about():
 
 @app.route('/login')
 async def login():
-    async with ClientSession() as session:
-        auth_mgr = AuthenticationManager(
-              session, client_id, client_secret, "http://localhost/auth/callback"
-        )
+    
+    session = ClientSession()
+    
+    auth_mgr = AuthenticationManager(
+        session, client_id, client_secret, "http://localhost:5000/auth/callback"
+    )
 
-       
-        try:
-            auth_url = auth_mgr.generate_authorization_url()
-            webbrowser.open(auth_url)
-            code = await queue.get()
-            await auth_mgr.request_tokens(code)
-        except ClientResponseError:
-              print("Could not refresh tokens")
-              sys.exit(-1)
-
-        # with open(tokens_file, mode="w") as f:
-        #       f.write(auth_mgr.oauth.json())
-        print(f'Refreshed tokens in {auth_mgr.oauth.json()}!')
-
-        xbl_client = XboxLiveClient(auth_mgr)
-    return render_template('pages/loggedin.html')
+    auth_url = auth_mgr.generate_authorization_url()
+    return redirect(auth_url)
+           
 
 
 @app.route('/register')
