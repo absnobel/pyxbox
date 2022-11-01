@@ -20,7 +20,6 @@ from xbox.webapi.common.exceptions import AuthenticationException
 from xbox import *
 client_id = ''
 client_secret = ''
-
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -98,7 +97,8 @@ async def auth_callback():
     print(f'Refreshed tokens in {auth_mgr.oauth.json()}!')
 
     xbl_client = XboxLiveClient(auth_mgr)
-    return render_template('pages/placeholder.loggedin.html')
+    profile = await xbl_client.profile.get_profile_by_xuid(xbl_client.xuid)
+    return render_template('pages/placeholder.loggedin.html', profile=profile)
 
 @app.route('/')
 def home():

@@ -3,8 +3,14 @@
 {% block content %}
 
 <div class="page-header">
-  <h1>SOME STUFFFF HERE</h1>
+  <h1>Gamertag: {{ profile.profile_users[0].settings[0].value }}</h1>
 </div>
-<p class="lead">HEYA</p>
-
+<table border = 1>
+{% for key, value in profile.profile_users[0].settings %}
+<tr>
+  <th> {{ key }} </th>
+  <td> {{ value }} </td>
+</tr>
+{% endfor %}
+</table>
 {% endblock %}
